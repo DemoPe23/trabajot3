@@ -2,32 +2,194 @@
 <html lang="es">
 <head>
     <meta charset="UTF-8">
-    <title>Operación Extracción - T3</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>T3 - Operación Extracción</title>
     <style>
-        body { margin: 0; overflow: hidden; font-family: sans-serif; user-select: none; }
-        /* Mira en el centro exacto de la pantalla */
+        * {
+            box-sizing: border-box;
+            margin: 0;
+            padding: 0;
+            user-select: none;
+        }
+
+        body {
+            overflow: hidden;
+            background-color: #0a0a0f;
+            font-family: 'Consolas', 'Courier New', monospace;
+            color: #e0e0e0;
+        }
+
+        
         #crosshair {
-            position: absolute; top: 50%; left: 50%;
-            width: 10px; height: 10px;
-            background: rgba(0, 255, 0, 0.8);
-            border-radius: 50%;
+            position: absolute;
+            top: 50%;
+            left: 50%;
+            width: 20px;
+            height: 20px;
             transform: translate(-50%, -50%);
             pointer-events: none;
+            z-index: 10;
         }
-        /* HUD de Munición */
+        #crosshair::before, #crosshair::after {
+            content: '';
+            position: absolute;
+            background: rgba(0, 255, 128, 0.85);
+            box-shadow: 0 0 4px rgba(0, 0, 0, 0.8);
+        }
+        
+        #crosshair::before {
+            top: 9px;
+            left: 0;
+            width: 20px;
+            height: 2px;
+        }
+        
+        #crosshair::after {
+            top: 0;
+            left: 9px;
+            width: 2px;
+            height: 20px;
+        }
+
+        /* Panel superior izquierdo */
+        #mission-panel {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            background: rgba(15, 20, 25, 0.75);
+            border-left: 4px solid #00ff80;
+            padding: 10px 16px;
+            font-size: 14px;
+            letter-spacing: 0.5px;
+            z-index: 10;
+        }
+        #mission-panel span {
+            color: #00ff80;
+            font-weight: bold;
+        }
+
+        /* HUD inferior derecho: Estado de armamento y munición*/
         #hud {
-            position: absolute; bottom: 20px; right: 30px;
-            color: white; font-size: 24px; font-weight: bold;
-            background: rgba(0, 0, 0, 0.6); padding: 15px; border-radius: 8px;
+            position: absolute;
+            bottom: 25px;
+            right: 30px;
+            background: rgba(15, 20, 25, 0.85);
+            border: 1px solid #334444;
+            border-right: 5px solid #ffaa00;
+            padding: 15px 25px;
+            display: flex;
+            gap: 25px;
+            align-items: center;
+            z-index: 10;
         }
-        /* Pantallas de estado (Inicio, Game Over, Victoria) */
+        .hud-block {
+            display: flex;
+            flex-direction: column;
+        }
+        .hud-label {
+            font-size: 11px;
+            color: #8899a6;
+            text-transform: uppercase;
+        }
+        #weapon-name {
+            font-size: 18px;
+            font-weight: bold;
+            color: #ffffff;
+            margin-top: 4px;
+        }
+        #ammo-count {
+            font-size: 28px;
+            font-weight: bold;
+            color: #ffaa00;
+        }
+
+        /* Alerta de sin munición */
+        .no-ammo {
+            color: #ff3333 !important;
+            animation: blink 0.6s infinite;
+        }
+        @keyframes blink {
+            50% { opacity: 0.3; }
+        }
+
+        /* Pantalla superpuesta (Inicio / Pausa / Victoria / Game Over) */
         #overlay {
-            position: absolute; top: 0; left: 0; width: 100%; height: 100%;
-            background: rgba(0, 0, 0, 0.85); color: white;
-            display: flex; flex-direction: column; justify-content: center; align-items: center;
-            font-size: 32px; text-align: center; cursor: pointer;
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: radial-gradient(circle, rgba(15, 20, 28, 0.88) 0%, rgba(5, 5, 10, 0.96) 100%);
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            z-index: 20;
+            cursor: pointer;
+        }
+
+        .overlay-box {
+            border: 1px solid #2a3540;
+            background: rgba(12, 16, 22, 0.9);
+            padding: 40px 50px;
+            text-align: center;
+            max-width: 550px;
+            box-shadow: 0 10px 30px rgba(0, 0, 0, 0.7);
+        }
+
+        #overlay-title {
+            font-size: 36px;
+            letter-spacing: 2px;
+            color: #00ff80;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+        }
+
+        #overlay-sub {
+            font-size: 16px;
+            color: #b0bec5;
+            margin-bottom: 25px;
+        }
+
+        .controls-guide {
+            text-align: left;
+            background: rgba(0, 0, 0, 0.4);
+            padding: 15px 20px;
+            border-left: 3px solid #ffaa00;
+            font-size: 13px;
+            line-height: 1.8;
+            color: #cfd8dc;
+            margin-bottom: 20px;
+        }
+
+        .key-badge {
+            background: #263238;
+            border: 1px solid #455a64;
+            padding: 2px 6px;
+            border-radius: 3px;
+            color: #ffaa00;
+            font-weight: bold;
+        }
+
+        /* Botón de reinicio para RF09*/
+        #btn-restart {
+            display: none;
+            margin-top: 15px;
+            padding: 10px 24px;
+            font-family: inherit;
+            font-size: 15px;
+            font-weight: bold;
+            color: #0a0a0f;
+            background-color: #00ff80;
+            border: none;
+            cursor: pointer;
+            text-transform: uppercase;
+        }
+        #btn-restart:hover {
+            background-color: #00cc66;
         }
     </style>
+
     <script type="importmap">
         {
             "imports": {
@@ -38,12 +200,44 @@
     </script>
 </head>
 <body>
+
+    <!-- Retícula FPS -->
     <div id="crosshair"></div>
-    <div id="hud">Arma: <span id="weapon-name">1</span> | Munición: <span id="ammo-count">10</span></div>
-    <div id="overlay">
-        <h1 id="overlay-title">OPERACIÓN EXTRACCIÓN</h1>
-        <p id="overlay-sub">Haz clic para capturar el mouse y comenzar (WASD + Mouse)</p>
+
+    <!-- Indicador de progresión-->
+    <div id="mission-panel">
+        OBJETIVO: <span>Alcanzar la zona de extracción al final del sector</span>
     </div>
+
+    <!-- HUD de Armas y Munición-->
+    <div id="hud">
+        <div class="hud-block">
+            <span class="hud-label">Arma Equipada</span>
+            <span id="weapon-name">Arma 1</span>
+        </div>
+        <div class="hud-block">
+            <span class="hud-label">Munición</span>
+            <span id="ammo-count">10</span>
+        </div>
+    </div>
+
+    <!-- Menú / Estados del juego-->
+    <div id="overlay">
+        <div class="overlay-box">
+            <h1 id="overlay-title">OPERACIÓN EXTRACCIÓN</h1>
+            <p id="overlay-sub">Haz clic en cualquier parte para iniciar la simulación</p>
+            
+            <div class="controls-guide" id="controls-info">
+                <div><span class="key-badge">W</span> <span class="key-badge">A</span> <span class="key-badge">S</span> <span class="key-badge">D</span> : Desplazamiento táctico</div>
+                <div><span class="key-badge">Mouse</span> : Orientar cámara 3D</div>
+                <div><span class="key-badge">Clic Izq</span> : Disparar (Semiautomático)</div>
+                <div><span class="key-badge">1</span> / <span class="key-badge">2</span> : Intercambiar armamento</div>
+            </div>
+
+            <button id="btn-restart" onclick="location.reload()">Reiniciar Operación</button>
+        </div>
+    </div>
+
     <script type="module" src="./main.js"></script>
 </body>
 </html>
