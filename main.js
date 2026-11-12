@@ -125,6 +125,51 @@ function switchWeapon(index) {
 }
 
 updateHUD();
+// SISTEMA DE ZOMBIS
+const zombies = [];
+const DETECTION_RANGE = 16;
+const ZOMBIE_SPEED = 3.8;
+
+function createZombie(x, z) {
+    const zombieGroup = new THREE.Group();
+    zombieGroup.position.set(x, 0, z);
+
+    zombieGroup.userData = {
+        isZombie: true,
+        hp: 2,          
+        active: false,  
+        dead: false
+    };
+
+    gltfLoader.load('./assets/zombie.glb', (gltf) => {
+        const model = gltf.scene;
+        model.scale.set(1.0, 1.0, 1.0); 
+        
+        // Clonamos el material de cada malla interna para que al dispararle a un zombi
+        model.traverse((child) => {
+            if (child.isMesh) {
+                child.castShadow = true;
+                child.receiveShadow = true;
+                if (child.material) {
+                    child.material = child.material.clone();
+                }
+            }
+        });
+
+        zombieGroup.add(model);
+    });
+
+    scene.add(zombieGroup);
+    zombies.push(zombieGroup);
+}
+
+// Distribución de enemigos a lo largo del sector
+createZombie(0, -12);
+createZombie(-5, -24);
+createZombie(4, -28);
+createZombie(-3, -42);
+createZombie(3, -45);
+createZombie(0, -60);
 
 const overlay = document.getElementById('overlay');
 const overlayTitle = document.getElementById('overlay-title');
@@ -178,6 +223,8 @@ muzzleFlash.position.set(0.28, -0.15, -0.8);
 camera.add(muzzleFlash);
 
 // DISPARO//
+const raycaster = new THREE.Raycaster();
+const centerScreen = new THREE.Vector2(0, 0);
 window.addEventListener('mousedown', (e) => {
     if (!controls.isLocked || e.button !== 0) return;
 
@@ -192,6 +239,45 @@ window.addEventListener('mousedown', (e) => {
 
     // Efecto de retroceso y fogonazo
     if (activeWep.model) {
+        raycaster.setFromCamera(centerScreen, camera);
+
+    const aliveZombies = zombies.filter(z => !z.userData.dead);
+    const intersects = raycaster.intersectObjects(aliveZombies, true);
+
+    if (intersects.length > 0) {
+        let hitNode = intersects[0].object;
+        while (hitNode.parent && !hitNode.userData.isZombie) {
+            hitNode = hitNode.parent;
+        }
+
+        if (hitNode && hitNode.userData.isZombie) {
+            hitNode.userData.hp -= 1;
+
+            // Efecto visual de impacto 
+            hitNode.traverse((child) => {
+                if (child.isMesh && child.material && child.material.emissive) {
+                    child.material.emissive.setHex(0x881111);
+                }
+            });
+            setTimeout(() => {
+                if (!hitNode.userData.dead) {
+                    hitNode.traverse((child) => {
+                        if (child.isMesh && child.material && child.material.emissive) {
+                            child.material.emissive.setHex(0x000000);
+                        }
+                    });
+                }
+            }, 120);
+
+            // Eliminación exacta al segundo disparo válido
+            if (hitNode.userData.hp <= 0) {
+                hitNode.userData.dead = true;
+                hitNode.userData.active = false;
+                hitNode.rotation.x = -Math.PI / 2;
+                hitNode.position.y = 0.2;
+            }
+        }
+    }
         activeWep.model.position.z += 0.08;
         activeWep.model.rotation.x += 0.08;
         muzzleFlash.intensity = 5;
@@ -220,6 +306,24 @@ function animate() {
         if (moveState.backward) controls.moveForward(-step);
         if (moveState.left) controls.moveRight(-step);
         if (moveState.right) controls.moveRight(step);
+        const playerPos = camera.position;
+
+        zombies.forEach((zombie) => {
+            if (zombie.userData.dead) return;
+
+            const dist = Math.hypot(
+                playerPos.x - zombie.position.x,
+                playerPos.z - zombie.position.z
+            );
+
+            if (!zombie.userData.active && dist <= DETECTION_RANGE) {
+                zombie.userData.active = true;
+            }
+            if (zombie.userData.active) {
+                zombie.lookAt(playerPos.x, zombie.position.y, playerPos.z);
+                zombie.translateZ(ZOMBIE_SPEED * delta);
+            }
+        });
     }
 
     renderer.render(scene, camera);
