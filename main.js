@@ -2,10 +2,10 @@ import * as THREE from 'three';
 import { PointerLockControls } from 'three/addons/controls/PointerLockControls.js';
 import { GLTFLoader } from 'three/addons/loaders/GLTFLoader.js';
 
-//CONFIGURACIÓN DEL MOTOR Y ESCENA BASE 
+// 1. CONFIGURACIÓN DEL MOTOR Y ESCENA BASE //
 const scene = new THREE.Scene();
 scene.background = new THREE.Color(0x0a0d12);
-scene.fog = new THREE.FogExp2(0x0a0d12, 0.02);
+scene.fog = new THREE.FogExp2(0x0a0d12, 0.018);
 
 const camera = new THREE.PerspectiveCamera(75, window.innerWidth / window.innerHeight, 0.1, 1000);
 camera.position.set(0, 1.7, 5);
@@ -14,6 +14,7 @@ const renderer = new THREE.WebGLRenderer({ antialias: true });
 renderer.setSize(window.innerWidth, window.innerHeight);
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.shadowMap.enabled = true;
+renderer.shadowMap.type = THREE.PCFSoftShadowMap;
 document.body.appendChild(renderer.domElement);
 
 window.addEventListener('resize', () => {
@@ -22,13 +23,19 @@ window.addEventListener('resize', () => {
     renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-//ILUMINACIÓN Y SUELO
-const ambientLight = new THREE.AmbientLight(0x404855, 0.7);
+// 2. ILUMINACIÓN OPTIMIZADA Y SUELO //
+const ambientLight = new THREE.AmbientLight(0x404855, 0.8);
 scene.add(ambientLight);
 
-const dirLight = new THREE.DirectionalLight(0xcfd8dc, 1.2);
-dirLight.position.set(15, 35, 10);
+const dirLight = new THREE.DirectionalLight(0xcfd8dc, 1.3);
+dirLight.position.set(20, 45, 10);
 dirLight.castShadow = true;
+dirLight.shadow.camera.top = 60;
+dirLight.shadow.camera.bottom = -60;
+dirLight.shadow.camera.left = -25;
+dirLight.shadow.camera.right = 25;
+dirLight.shadow.mapSize.width = 2048;
+dirLight.shadow.mapSize.height = 2048;
 scene.add(dirLight);
 
 const floor = new THREE.Mesh(
@@ -44,7 +51,7 @@ const gridHelper = new THREE.GridHelper(130, 65, 0x00ff80, 0x222a30);
 gridHelper.position.set(0, 0.01, -50);
 scene.add(gridHelper);
 
-//CÁMARA Y DESPLAZAMIENTO
+// 3. CÁMARA Y DESPLAZAMIENTO//
 const controls = new PointerLockControls(camera, document.body);
 scene.add(camera);
 
@@ -56,6 +63,7 @@ const btnRestart = document.getElementById('btn-restart');
 
 let isGameOver = false;
 let isVictory = false;
+const moveState = { forward: false, backward: false, left: false, right: false };
 
 overlay.addEventListener('click', () => {
     if (!isGameOver && !isVictory) controls.lock();
@@ -65,8 +73,13 @@ controls.addEventListener('lock', () => {
     overlay.style.display = 'none';
 });
 
-
 controls.addEventListener('unlock', () => {
+    // Resetear teclas al salir o pausar para evitar que el jugador camine solo
+    moveState.forward = false;
+    moveState.backward = false;
+    moveState.left = false;
+    moveState.right = false;
+
     if (!isGameOver && !isVictory) {
         overlayTitle.style.color = "#00ff80";
         overlayTitle.innerText = "SIMULACIÓN EN PAUSA";
@@ -75,17 +88,18 @@ controls.addEventListener('unlock', () => {
     }
 });
 
-// SISTEMA DE ARMAS Y MUNICIONES
+// 4. SISTEMA DE ARMAS Y MUNICIONES //
 const gltfLoader = new GLTFLoader();
 const weaponNameEl = document.getElementById('weapon-name');
 const ammoCountEl = document.getElementById('ammo-count');
 
 const weapons = {
-    1: { name: "Pistola Táctica", ammo: 10, model: null, basePos: { x: 0.28, y: -0.25, z: -0.45 } },
-    2: { name: "Rifle de Asalto", ammo: 15, model: null, basePos: { x: 0.30, y: -0.28, z: -0.55 } }
+    1: { name: "Pistola Táctica", ammo: 12, model: null, basePos: { x: 0.28, y: -0.25, z: -0.45 } },
+    2: { name: "Rifle de Asalto", ammo: 16, model: null, basePos: { x: 0.30, y: -0.28, z: -0.55 } }
 };
 
 let currentWeapon = 1;
+let recoilTimeout = null;
 
 function updateHUD() {
     const activeWep = weapons[currentWeapon];
@@ -116,14 +130,18 @@ gltfLoader.load('./assets/arma2.glb', (gltf) => {
 
 function switchWeapon(index) {
     if (currentWeapon === index) return;
-    if (weapons[currentWeapon].model) weapons[currentWeapon].model.visible = false;
+    if (weapons[currentWeapon].model) {
+        weapons[currentWeapon].model.position.z = weapons[currentWeapon].basePos.z;
+        weapons[currentWeapon].model.rotation.x = 0;
+        weapons[currentWeapon].model.visible = false;
+    }
     currentWeapon = index;
     if (weapons[currentWeapon].model) weapons[currentWeapon].model.visible = true;
     updateHUD();
 }
 updateHUD();
 
-// ESCENARIO, MUNICIÓN Y EXTRACCIÓN
+// 5. ESCENARIO, COLISIONES AABB Y EXTRACCIÓN //
 const extractionZone = new THREE.Mesh(
     new THREE.CylinderGeometry(3.5, 3.5, 0.3, 32),
     new THREE.MeshStandardMaterial({ color: 0x00ff88, emissive: 0x00ff88, emissiveIntensity: 0.5 })
@@ -131,13 +149,14 @@ const extractionZone = new THREE.Mesh(
 extractionZone.position.set(0, 0.15, -90);
 scene.add(extractionZone);
 
-// Baliza luminosa en la zona de extracción
-const beaconLight = new THREE.PointLight(0x00ff88, 4, 20);
+const beaconLight = new THREE.PointLight(0x00ff88, 5, 22);
 beaconLight.position.set(0, 3, -90);
 scene.add(beaconLight);
 
 const wallMat = new THREE.MeshStandardMaterial({ color: 0x263238, roughness: 0.85 });
 const crateMat = new THREE.MeshStandardMaterial({ color: 0x37474f, roughness: 0.7 });
+const wallMeshes = [];
+const wallBoxes = [];
 
 function createWall(x, z, width, height, depth, isCrate = false) {
     const mesh = new THREE.Mesh(
@@ -148,15 +167,18 @@ function createWall(x, z, width, height, depth, isCrate = false) {
     mesh.castShadow = true;
     mesh.receiveShadow = true;
     scene.add(mesh);
+
+    wallMeshes.push(mesh);
+    const box = new THREE.Box3().setFromObject(mesh);
+    wallBoxes.push(box);
 }
 
-// Perímetro cerrado del sector 
-createWall(12, -45, 2, 5, 110);  // Muro perimetral derecho
-createWall(-12, -45, 2, 5, 110); // Muro perimetral izquierdo
-createWall(0, 10, 26, 5, 2);     // Muro trasero (Inicio)
-createWall(0, -100, 26, 5, 2);   // Muro final (Detrás de extracción)
+// Perímetro cerrado del sector y barricadas tácticas
+createWall(12, -45, 2, 5, 110);
+createWall(-12, -45, 2, 5, 110);
+createWall(0, 10, 26, 5, 2);
+createWall(0, -100, 26, 5, 2);
 
-// Obstáculos tácticos, barricadas y pilares
 createWall(-5, -12, 8, 4, 2);
 createWall(6, -24, 8, 4, 2);
 createWall(0, -36, 10, 2.5, 2, true);
@@ -166,14 +188,25 @@ createWall(0, -65, 8, 4, 2);
 createWall(-5, -78, 6, 2.5, 2, true);
 createWall(5, -78, 6, 2.5, 2, true);
 
-// Cajas de Munición Coleccionables
+// Detector universal de colisiones AABB
+function checkEntityCollision(x, z, radius) {
+    const entityBox = new THREE.Box3(
+        new THREE.Vector3(x - radius, 0, z - radius),
+        new THREE.Vector3(x + radius, 2, z + radius)
+    );
+    for (let i = 0; i < wallBoxes.length; i++) {
+        if (entityBox.intersectsBox(wallBoxes[i])) return true;
+    }
+    return false;
+}
+
 const ammoBoxes = [];
 function createAmmo(x, z, amount) {
     const box = new THREE.Mesh(
         new THREE.BoxGeometry(0.6, 0.6, 0.6),
         new THREE.MeshStandardMaterial({ color: 0xffaa00, emissive: 0x553300 })
     );
-    box.position.set(x, 0.3, z);
+    box.position.set(x, 0.4, z);
     box.userData = { active: true, amount: amount };
     scene.add(box);
     ammoBoxes.push(box);
@@ -184,6 +217,7 @@ createAmmo(0, -56, 8);
 createAmmo(-8, -72, 10);
 
 function endGame(victory) {
+    if (isGameOver || isVictory) return;
     if (victory) {
         isVictory = true;
         overlayTitle.style.color = "#00ff88";
@@ -201,7 +235,7 @@ function endGame(victory) {
     controls.unlock();
 }
 
-//SISTEMA DE ZOMBIS CON GENERACIÓN ALEATORIA
+// 6. SISTEMA DE ZOMBIS PROCEDURAL//
 const zombies = [];
 const DETECTION_RANGE = 18;
 
@@ -234,18 +268,23 @@ function createZombie(x, z, speed) {
     zombies.push(zombieGroup);
 }
 
-
+// Spawneo validado para que ningún zombi aparezca enterrado dentro de un muro
 const TOTAL_ZOMBIES = 12;
 for (let i = 0; i < TOTAL_ZOMBIES; i++) {
-    const randX = (Math.random() - 0.5) * 18; 
-    const randZ = -14 - (i * 6) - (Math.random() * 3);
-    const randSpeed = 3.2 + Math.random() * 1.6;
+    let randX = 0;
+    let randZ = -15 - (i * 6);
+    let attempts = 0;
+    do {
+        randX = (Math.random() - 0.5) * 18;
+        randZ = -15 - (i * 6) - (Math.random() * 2.5);
+        attempts++;
+    } while (checkEntityCollision(randX, randZ, 0.7) && attempts < 15);
+
+    const randSpeed = 3.2 + Math.random() * 1.5;
     createZombie(randX, randZ, randSpeed);
 }
 
-//ENTRADAS Y DISPARO
-const moveState = { forward: false, backward: false, left: false, right: false };
-
+// 7. ENTRADAS, DISPARO Y OCLUSIÓN DE MUROS//
 window.addEventListener('keydown', (e) => {
     switch (e.code) {
         case 'KeyW': moveState.forward = true; break;
@@ -282,11 +321,14 @@ window.addEventListener('mousedown', (e) => {
     activeWep.ammo--;
     updateHUD();
 
+    // Fix de retroceso: resetear a posición base antes de aplicar el nuevo impulso
     if (activeWep.model) {
-        activeWep.model.position.z += 0.08;
-        activeWep.model.rotation.x += 0.08;
+        if (recoilTimeout) clearTimeout(recoilTimeout);
+        activeWep.model.position.z = activeWep.basePos.z + 0.08;
+        activeWep.model.rotation.x = 0.08;
         muzzleFlash.intensity = 5;
-        setTimeout(() => {
+
+        recoilTimeout = setTimeout(() => {
             if (activeWep.model) {
                 activeWep.model.position.z = activeWep.basePos.z;
                 activeWep.model.rotation.x = 0;
@@ -296,16 +338,20 @@ window.addEventListener('mousedown', (e) => {
     }
 
     raycaster.setFromCamera(centerScreen, camera);
-    const aliveZombies = zombies.filter(z => !z.userData.dead);
-    const intersects = raycaster.intersectObjects(aliveZombies, true);
 
-    if (intersects.length > 0) {
-        let hitNode = intersects[0].object;
+    const wallHits = raycaster.intersectObjects(wallMeshes, false);
+    const closestWallDist = wallHits.length > 0 ? wallHits[0].distance : Infinity;
+
+    const aliveZombies = zombies.filter(z => !z.userData.dead);
+    const zombieHits = raycaster.intersectObjects(aliveZombies, true);
+
+    if (zombieHits.length > 0 && zombieHits[0].distance < closestWallDist) {
+        let hitNode = zombieHits[0].object;
         while (hitNode.parent && !hitNode.userData.isZombie) {
             hitNode = hitNode.parent;
         }
 
-        if (hitNode && hitNode.userData.isZombie) {
+        if (hitNode && hitNode.userData.isZombie && !hitNode.userData.dead) {
             hitNode.userData.hp -= 1;
 
             hitNode.traverse((child) => {
@@ -333,36 +379,57 @@ window.addEventListener('mousedown', (e) => {
     }
 });
 
-//BUCLE PRINCIPAL //
+// 8. BUCLE DE RENDERIZADO Y FÍSICA DE DESLIZAMIENTO //
 const clock = new THREE.Clock();
 const PLAYER_SPEED = 7.5;
 
 function animate() {
     requestAnimationFrame(animate);
-    const delta = clock.getDelta();
+    const delta = Math.min(clock.getDelta(), 0.1);
 
     if (controls.isLocked && !isGameOver && !isVictory) {
+        const prevPos = camera.position.clone();
         const step = PLAYER_SPEED * delta;
+
         if (moveState.forward) controls.moveForward(step);
         if (moveState.backward) controls.moveForward(-step);
         if (moveState.left) controls.moveRight(-step);
         if (moveState.right) controls.moveRight(step);
+        const newX = camera.position.x;
+        const newZ = camera.position.z;
+
+        if (checkEntityCollision(newX, newZ, 0.45)) {
+            if (!checkEntityCollision(newX, prevPos.z, 0.45)) {
+                camera.position.z = prevPos.z; // Permite deslizar en X
+            } else if (!checkEntityCollision(prevPos.x, newZ, 0.45)) {
+                camera.position.x = prevPos.x; // Permite deslizar en Z
+            } else {
+                camera.position.copy(prevPos); // Bloqueo total en esquina
+            }
+        }
 
         const playerPos = camera.position;
 
-        ammoBoxes.forEach(box => {
-            if (box.userData.active && playerPos.distanceTo(box.position) < 1.6) {
-                box.userData.active = false;
-                box.visible = false;
-                weapons[currentWeapon].ammo += box.userData.amount;
-                updateHUD();
+        // Animación y recolección de cajas de suministros
+        ammoBoxes.forEach((box, idx) => {
+            if (box.userData.active) {
+                box.rotation.y += 2.0 * delta;
+                box.position.y = 0.4 + Math.sin(clock.elapsedTime * 3 + idx) * 0.08;
+                if (playerPos.distanceTo(box.position) < 1.6) {
+                    box.userData.active = false;
+                    box.visible = false;
+                    weapons[currentWeapon].ammo += box.userData.amount;
+                    updateHUD();
+                }
             }
         });
 
+        // Verificar llegada a la extracción
         if (Math.hypot(playerPos.x - extractionZone.position.x, playerPos.z - extractionZone.position.z) < 3.2) {
             endGame(true);
         }
 
+        // IA de zombis con colisión contra barricadas
         zombies.forEach((zombie) => {
             if (zombie.userData.dead) return;
 
@@ -373,8 +440,18 @@ function animate() {
             }
 
             if (zombie.userData.active) {
+                const zPrev = zombie.position.clone();
                 zombie.lookAt(playerPos.x, zombie.position.y, playerPos.z);
                 zombie.translateZ(zombie.userData.speed * delta);
+                if (checkEntityCollision(zombie.position.x, zombie.position.z, 0.5)) {
+                    if (!checkEntityCollision(zombie.position.x, zPrev.z, 0.5)) {
+                        zombie.position.z = zPrev.z;
+                    } else if (!checkEntityCollision(zPrev.x, zombie.position.z, 0.5)) {
+                        zombie.position.x = zPrev.x;
+                    } else {
+                        zombie.position.copy(zPrev);
+                    }
+                }
 
                 if (dist < 1.0) {
                     endGame(false);
